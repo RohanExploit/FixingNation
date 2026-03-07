@@ -34,18 +34,78 @@ const CITY_AUTHORITIES = {
   }
 };
 
+const SUPPORTED_CATEGORIES = new Set([
+  "road_damage",
+  "garbage",
+  "electricity",
+  "water",
+  "safety",
+  "corruption",
+  "other"
+]);
+
+const SEVERITY_BY_CATEGORY = {
+  road_damage: 0.8,
+  garbage: 0.6,
+  electricity: 0.7,
+  water: 0.7,
+  safety: 0.9,
+  corruption: 0.95,
+  other: 0.5
+};
+
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
 
+function safeNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function normalizeNonNegativeInteger(value) {
+  return Math.max(0, Math.trunc(safeNumber(value, 0)));
+}
+
+function normalizeCategory(value) {
+  const normalized = String(value || "other").toLowerCase();
+  if (!SUPPORTED_CATEGORIES.has(normalized)) {
+    return "other";
+  }
+
+  return normalized;
+}
+
+function normalizeCreatedAtMillis(createdAt) {
+  const millis = createdAt?.toMillis?.();
+  const now = Date.now();
+  const normalized = safeNumber(millis, now);
+
+  // Guard against invalid/future timestamps impacting ranking recency.
+  return Math.min(now, Math.max(0, normalized));
+}
+
 function getRecencyScore(createdAtMillis) {
-  const ageHours = (Date.now() - createdAtMillis) / (1000 * 60 * 60);
+  const ageHours = (Date.now() - safeNumber(createdAtMillis, Date.now())) / (1000 * 60 * 60);
   return clamp01(1 - ageHours / 72);
 }
 
 function calculateRankingScore({ proximity = 0.5, engagement = 0, recency = 0.5, severity = 0.5 }) {
-  const normalizedEngagement = clamp01(engagement / 100);
-  return Number((0.35 * proximity + 0.30 * normalizedEngagement + 0.20 * recency + 0.15 * severity).toFixed(4));
+  const normalizedProximity = clamp01(safeNumber(proximity, 0.5));
+  const normalizedEngagement = clamp01(safeNumber(engagement, 0) / 100);
+  const normalizedRecency = clamp01(safeNumber(recency, 0.5));
+  const normalizedSeverity = clamp01(safeNumber(severity, 0.5));
+
+  return Number((
+    0.35 * normalizedProximity +
+    0.30 * normalizedEngagement +
+    0.20 * normalizedRecency +
+    0.15 * normalizedSeverity
+  ).toFixed(4));
 }
 
 function routeAuthority(city, category) {
@@ -58,8 +118,8 @@ function routeAuthority(city, category) {
 
 exports.onPostCreated = functions.firestore.document("posts/{postId}").onCreate(async (snap) => {
   const post = snap.data();
-  const category = post.category || "other";
-  const city = post.city || "";
+  const category = normalizeCategory(post.category);
+  const city = String(post.city || "");
 
   const moderation = {
     status: "approved",
@@ -68,20 +128,10 @@ exports.onPostCreated = functions.firestore.document("posts/{postId}").onCreate(
     source: "fallback_local"
   };
 
-  const severityByCategory = {
-    road_damage: 0.8,
-    garbage: 0.6,
-    electricity: 0.7,
-    water: 0.7,
-    safety: 0.9,
-    corruption: 0.95,
-    other: 0.5
-  };
-
-  const severity = severityByCategory[category] || 0.5;
-  const createdAtMillis = post.createdAt?.toMillis?.() || Date.now();
+  const severity = SEVERITY_BY_CATEGORY[category] || 0.5;
+  const createdAtMillis = normalizeCreatedAtMillis(post.createdAt);
   const recency = getRecencyScore(createdAtMillis);
-  const engagement = (post.upvotes || 0) + (post.commentsCount || 0);
+  const engagement = normalizeNonNegativeInteger(post.upvotes) + normalizeNonNegativeInteger(post.commentsCount);
 
   const rankingScore = calculateRankingScore({
     proximity: 0.5,
@@ -112,15 +162,15 @@ exports.onCommentCreated = functions.firestore.document("posts/{postId}/comments
     if (!postSnap.exists) return;
 
     const post = postSnap.data();
-    const commentsCount = (post.commentsCount || 0) + 1;
-    const engagement = (post.upvotes || 0) + commentsCount;
-    const createdAtMillis = post.createdAt?.toMillis?.() || Date.now();
+    const commentsCount = normalizeNonNegativeInteger(post.commentsCount) + 1;
+    const engagement = normalizeNonNegativeInteger(post.upvotes) + commentsCount;
+    const createdAtMillis = normalizeCreatedAtMillis(post.createdAt);
     const recency = getRecencyScore(createdAtMillis);
     const rankingScore = calculateRankingScore({
       proximity: 0.5,
       engagement,
       recency,
-      severity: post.severity || 0.5
+      severity: clamp01(safeNumber(post.severity, 0.5))
     });
 
     tx.update(postRef, {
@@ -142,5 +192,8 @@ exports.health = functions.https.onRequest((_, res) => {
 exports._internal = {
   calculateRankingScore,
   routeAuthority,
-  getRecencyScore
+  getRecencyScore,
+  normalizeCategory,
+  normalizeCreatedAtMillis,
+  normalizeNonNegativeInteger
 };
