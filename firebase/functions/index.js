@@ -72,7 +72,7 @@ function normalizeNonNegativeInteger(value) {
 }
 
 function normalizeCategory(value) {
-  const normalized = String(value || "other").toLowerCase();
+  const normalized = String(value || "other").trim().toLowerCase();
   if (!SUPPORTED_CATEGORIES.has(normalized)) {
     return "other";
   }
