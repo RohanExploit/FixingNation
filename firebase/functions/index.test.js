@@ -26,7 +26,7 @@ test('normalizeCreatedAtMillis clamps future timestamps', () => {
   const now = Date.now();
   const mockedFuture = { toMillis: () => now + 3600 * 1000 };
   const normalized = _internal.normalizeCreatedAtMillis(mockedFuture);
-  assert.ok(normalized <= now);
+  assert.ok(normalized <= Date.now());
   assert.ok(normalized >= 0);
 });
 
