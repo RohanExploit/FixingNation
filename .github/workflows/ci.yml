@@ -1,0 +1,35 @@
+name: civicpulse-ci
+
+on:
+  push:
+    branches: ["main", "work"]
+  pull_request:
+
+jobs:
+  functions-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firebase/functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run lint
+      - run: npm test
+
+  flutter-static:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze

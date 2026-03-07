@@ -1,16 +1,24 @@
-# Create applications with the Copilot CLI
+# CivicPulse (FixingNation)
 
-<img src="https://octodex.github.com/images/Professortocat_v2.png" align="right" height="200px" />
+CivicPulse is a mobile-first civic grievance and public accountability platform focused on India (Pune, Mumbai, Bangalore).
 
-Hey RohanExploit!
+## Stack
+- Flutter (Android primary, Web PWA secondary)
+- Firebase Auth, Firestore, Storage, Functions, Hosting, FCM
+- GitHub Actions CI
 
-Mona here. I'm done preparing your exercise. Hope you enjoy! 💚
+## Repo layout
+- `AGENTS.md` — implementation directives for AI/human contributors
+- `ARCHITECTURE.md` — production architecture and constraints
+- `TASKS.md` — phased roadmap
+- `flutter_app/` — Flutter client scaffold
+- `firebase/` — Firebase rules/functions/indexes
+- `scripts/` — build/deploy scripts
 
-Remember, it's self-paced so feel free to take a break! ☕️
-
-[![](https://img.shields.io/badge/Go%20to%20Exercise-%E2%86%92-1f883d?style=for-the-badge&logo=github&labelColor=197935)](https://github.com/RohanExploit/FixingNation/issues/2)
-
----
-
-&copy; 2025 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
-
+## Quickstart
+1. Install Flutter + Firebase CLI.
+2. Configure Firebase project and `flutterfire configure`.
+3. Run app:
+   - `cd flutter_app && flutter pub get && flutter run`
+4. Run functions checks:
+   - `cd firebase/functions && npm install && npm test`
