@@ -3,15 +3,26 @@
     "source": "firebase/functions"
   },
   "hosting": {
-    "public": "flutter_app/build/web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "public": "web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   },
   "firestore": {
+    "database": "(default)",
+    "location": "asia-south1",
     "rules": "firebase/firestore.rules",
     "indexes": "firebase/firestore.indexes.json"
   },
   "storage": {
-    "rules": "firebase/storage.rules"
+    "rules": "storage.rules"
   }
 }

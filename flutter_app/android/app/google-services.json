@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "560417513923",
+    "project_id": "fixingnation-dev",
+    "storage_bucket": "fixingnation-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:560417513923:android:60349edb030039de629d76",
+        "android_client_info": {
+          "package_name": "com.example.civicpulse"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "560417513923-ucjdin0c13n0evqf1ueld1ahfm5jnbb2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.civicpulse",
+            "certificate_hash": "9bc1f41d2c887b0e68c58d66a05f716ea698a2ce"
+          }
+        },
+        {
+          "client_id": "560417513923-fsrl6gp8hc6e0qi6janavbcr47qenvgf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRLstBNkX4zt-PI-fVkPilBDrL50ZFfkE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "560417513923-fsrl6gp8hc6e0qi6janavbcr47qenvgf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,6 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ── Auth helpers ────────────────────────────────────────────────────────
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -13,39 +16,94 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── Field-shape helpers ─────────────────────────────────────────────────
+
+    // Reject any post creation that includes server-computed fields.
+    //
+    // severity, rankingScore, authorityId, and moderation are written
+    // exclusively by the Cloudflare Worker (via the Firebase Admin REST API,
+    // which bypasses these rules).  A client that attempts to set these fields
+    // on create is either buggy or acting maliciously — deny the write.
+    function hasNoComputedFields() {
+      let d = request.resource.data;
+      return !('severity'     in d)
+          && !('rankingScore' in d)
+          && !('authorityId'  in d)
+          && !('moderation'   in d);
+    }
+
+    // Validate the raw fields that Flutter supplies on post creation.
+    function validPostCreate() {
+      let d = request.resource.data;
+      return d.authorId    == request.auth.uid
+          && d.title       is string
+          && d.title.size() > 0
+          && d.title.size() <= 200
+          && d.description is string
+          && d.description.size() > 0
+          && d.description.size() <= 1000
+          && d.status      == 'PENDING_MODERATION'
+          && d.upvotes     == 0
+          && d.commentsCount == 0;
+    }
+
+    // ── Collections ─────────────────────────────────────────────────────────
+
     match /users/{uid} {
-      allow read: if true;
+      allow read:   if true;
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /posts/{postId} {
-      allow read: if resource.data.moderation.status == 'approved' || isAdmin();
+      // Anyone can read approved posts.
+      // Admins can read everything.
+      // Authors can read their own posts even while pending.
+      allow read: if resource.data.moderation.status == 'approved'
+                  || isAdmin()
+                  || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      // Flutter may only create posts with raw fields — no computed fields.
       allow create: if isSignedIn()
-        && request.resource.data.authorId == request.auth.uid
-        && request.resource.data.title is string
-        && request.resource.data.description is string;
+                    && validPostCreate()
+                    && hasNoComputedFields();
+
+      // Only admins may update posts (status changes, moderation overrides).
+      // The Worker writes via the Admin REST API which bypasses rules entirely.
       allow update: if isAdmin();
+
       allow delete: if isAdmin();
 
       match /comments/{commentId} {
-        allow read: if true;
-        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow read:          if true;
+        allow create:        if isSignedIn()
+                             && request.resource.data.authorId == request.auth.uid
+                             && request.resource.data.text is string
+                             && request.resource.data.text.size() > 0
+                             && request.resource.data.text.size() <= 500;
         allow update, delete: if isAdmin();
       }
     }
 
     match /reports/{reportId} {
-      allow create: if isSignedIn();
+      allow create:           if isSignedIn();
       allow read, update, delete: if isAdmin();
     }
 
     match /authorities/{authorityId} {
-      allow read: if true;
+      allow read:  if true;
       allow write: if isAdmin();
     }
 
+    // Posts that could not be classified after all Worker retries.
+    // Written by the Flutter client (best-effort); read and managed by admins.
+    match /failed_classifications/{postId} {
+      allow create, update: if isSignedIn();
+      allow read, delete:   if isAdmin();
+    }
+
+    // Deny all unmapped paths.
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,0 +1,25 @@
+name = "fixingnation-ai-worker"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Non-secret configuration
+[vars]
+FIREBASE_PROJECT_ID      = "fixingnation-dev"
+TELEGRAM_OWNER_CHAT_ID   = "1990648223"
+
+# KV namespace for Telegram bot conversation state + pending submissions.
+# Create with:  npx wrangler kv namespace create PENDING_SUBMISSIONS
+# Then replace the id below with the output ID.
+[[kv_namespaces]]
+binding = "PENDING_SUBMISSIONS"
+id      = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets — set these with the Wrangler CLI, never commit them:
+#   wrangler secret put API_SHARED_SECRET
+#   wrangler secret put GEMINI_API_KEY
+#   wrangler secret put FIREBASE_SERVICE_ACCOUNT
+#   wrangler secret put TELEGRAM_BOT_TOKEN
+#
+# FIREBASE_SERVICE_ACCOUNT is the full contents of your service account
+# JSON key file (Project Settings → Service Accounts → Generate new private key),
+# stored as a single-line JSON string.
