@@ -16,6 +16,22 @@ supports a parallel submission + approval channel.
 
 ---
 
+## API Keys & Credentials
+
+| Service | Key / Token | Purpose |
+|---|---|---|
+| Telegram Bot (`@vishwaguru_bot`) | `8493507107:AAF6EtBErAgA1J9_WOumQT5qOdIQxlvE2wI` | Bot notifications + approval flow |
+| data.gov.in | `579b464db66ec23bdd00000181b9b5d1649a470b4faa84fdfdf64285` | Govt open data API — real infrastructure datasets for Indian cities |
+
+### data.gov.in API — Future Use Ideas
+- Pull real ward/constituency boundaries per city
+- Cross-reference reported issues against official govt infrastructure data
+- Validate city names, pin codes, municipal ward numbers
+- Fetch official complaint status from govt portals (if available)
+- Base URL: `https://api.data.gov.in/resource/<resource-id>?api-key=<KEY>&format=json`
+
+---
+
 ## Constraints (Do Not Violate)
 
 | Constraint | Reason |
