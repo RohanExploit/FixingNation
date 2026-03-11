@@ -23,3 +23,9 @@
 
 # Image compress
 -keep class com.sython.flutter_image_compress.** { *; }
+
+# Prevent R8 missing-class crashes for Play Core (used implicitly by Flutter engine)
+# These are safe to ignore if not building a Play Feature Delivery bundle
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
