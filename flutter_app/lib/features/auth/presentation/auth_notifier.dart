@@ -59,6 +59,11 @@ class AuthNotifier extends Notifier<AuthFormState> {
         isLoading:    false,
         errorMessage: _authMessage(e.code),
       );
+    } on Exception {
+      state = state.copyWith(
+        isLoading:    false,
+        errorMessage: 'No internet connection. Check your network.',
+      );
     }
   }
 
@@ -75,6 +80,11 @@ class AuthNotifier extends Notifier<AuthFormState> {
       state = state.copyWith(
         isLoading:    false,
         errorMessage: _authMessage(e.code),
+      );
+    } on Exception {
+      state = state.copyWith(
+        isLoading:    false,
+        errorMessage: 'No internet connection. Check your network.',
       );
     }
   }
@@ -94,6 +104,11 @@ class AuthNotifier extends Notifier<AuthFormState> {
         isLoading:    false,
         errorMessage: _authMessage(e.code),
       );
+    } on Exception {
+      state = state.copyWith(
+        isLoading:    false,
+        errorMessage: 'No internet connection. Check your network.',
+      );
     }
   }
 
@@ -101,14 +116,15 @@ class AuthNotifier extends Notifier<AuthFormState> {
 
   String _authMessage(String code) {
     switch (code) {
-      case 'user-not-found':       return 'No account found with this email.';
-      case 'wrong-password':       return 'Incorrect password.';
-      case 'invalid-credential':   return 'Invalid email or password.';
-      case 'email-already-in-use': return 'An account with this email already exists.';
-      case 'weak-password':        return 'Password must be at least 6 characters.';
-      case 'invalid-email':        return 'Please enter a valid email address.';
-      case 'too-many-requests':    return 'Too many attempts. Try again later.';
-      default:                     return 'Authentication error ($code).';
+      case 'user-not-found':         return 'No account found with this email.';
+      case 'wrong-password':         return 'Incorrect password.';
+      case 'invalid-credential':     return 'Invalid email or password.';
+      case 'email-already-in-use':   return 'An account with this email already exists.';
+      case 'weak-password':          return 'Password must be at least 6 characters.';
+      case 'invalid-email':          return 'Please enter a valid email address.';
+      case 'too-many-requests':      return 'Too many attempts. Try again later.';
+      case 'network-request-failed': return 'No internet connection. Check your network.';
+      default:                       return 'Authentication error ($code).';
     }
   }
 }

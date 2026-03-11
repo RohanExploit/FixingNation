@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(flutter:*)",
+      "Bash(echo $HOME)",
+      "Read(//mnt/c/**)",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(xargs grep:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

@@ -26,7 +26,7 @@ final _mapPostsProvider =
   return FirebaseFirestore.instance
       .collection('posts')
       .where('city', isEqualTo: city)
-      .where('moderation.status', isEqualTo: 'approved')
+      .where('status', isEqualTo: 'under_review')
       .limit(100)
       .snapshots()
       .map((snap) => snap.docs
@@ -167,9 +167,13 @@ class _MapPageState extends ConsumerState<MapPage> {
   Marker _buildMarker(BuildContext context, _MapPost post) {
     final cs    = Theme.of(context).colorScheme;
     final Color color;
-    if (post.severity >= 0.7)      color = cs.error;
-    else if (post.severity >= 0.4) color = Colors.orange;
-    else                           color = cs.primary;
+    if (post.severity >= 0.7) {
+      color = cs.error;
+    } else if (post.severity >= 0.4) {
+      color = Colors.orange;
+    } else {
+      color = cs.primary;
+    }
 
     return Marker(
       point:  LatLng(post.lat, post.lng),

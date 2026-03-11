@@ -160,7 +160,7 @@ class AiService {
     String? categoryHint,
     required int createdAtMs,
   }) async {
-    final uri = Uri.parse('${kWorkerBaseUrl}/classify');
+    final uri = Uri.parse('$kWorkerBaseUrl/classify');
 
     final http.Response response;
     try {

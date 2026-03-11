@@ -1,8 +1,12 @@
+import 'dart:math';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/providers/city_provider.dart';
 import '../../../core/utils/geohash.dart';
 import '../data/post_repository.dart';
 
@@ -30,8 +34,7 @@ class ReportFormState {
   final String title;
   final String description;
 
-  /// Selected category hint — nullable because the user may leave it blank
-  /// (the AI will classify automatically).
+  /// Selected category key.
   final String? category;
 
   /// City selected by the user — required for authority routing.
@@ -49,12 +52,12 @@ class ReportFormState {
   /// Populated when [status] transitions to [ReportStatus.success].
   final String? submittedPostId;
 
-  /// Non-null when a recoverable error occurred (location denied, network, etc.).
+  /// Non-null when a recoverable error occurred.
   final String? errorMessage;
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  bool get hasLocation => lat != null && lng != null;
+  bool get hasLocation  => lat != null && lng != null;
   bool get isLocating   => status == ReportStatus.locating;
   bool get isSubmitting => status == ReportStatus.submitting;
   bool get isSuccess    => status == ReportStatus.success;
@@ -101,12 +104,36 @@ class ReportFormState {
 const _sentinel = Object();
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Simple UUID v4 generator (no external package)
+// ─────────────────────────────────────────────────────────────────────────────
+
+String _generateId() {
+  final rng = Random.secure();
+  final bytes = List<int>.generate(16, (_) => rng.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Notifier
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ReportNotifier extends Notifier<ReportFormState> {
+  /// Idempotency key — generated once per form session.
+  /// Prevents duplicate posts if the user taps Submit twice before the
+  /// first request completes or on network retry.
+  late String _idempotencyKey;
+
   @override
-  ReportFormState build() => const ReportFormState();
+  ReportFormState build() {
+    _idempotencyKey = _generateId();
+    // Pre-populate city from the global city selector.
+    final city = ref.read(selectedCityProvider);
+    return ReportFormState(city: city);
+  }
 
   // ── Field updates ──────────────────────────────────────────────────────────
 
@@ -129,16 +156,17 @@ class ReportNotifier extends Notifier<ReportFormState> {
 
   /// Pick an image from [source] (gallery or camera).
   ///
-  /// image_picker handles basic size reduction via maxWidth/maxHeight and
-  /// imageQuality, keeping uploads well under the 2 MB Storage rule.
+  /// image_picker + flutter_image_compress both run:
+  ///   1. picker caps at 1024×1024 px to reduce decode work
+  ///   2. [PostRepository.uploadImage] compresses to ≤ 200 KB JPEG before upload
   Future<void> pickImage(ImageSource source) async {
     final picker = ImagePicker();
     try {
       final file = await picker.pickImage(
         source:       source,
-        maxWidth:     1024,
-        maxHeight:    1024,
-        imageQuality: 80,
+        maxWidth:     1920,   // keep original resolution; compress handles size
+        maxHeight:    1920,
+        imageQuality: 100,    // lossless from picker — compress does the work
       );
       state = state.copyWith(imageFile: file, errorMessage: null);
     } on Exception catch (e) {
@@ -153,7 +181,6 @@ class ReportNotifier extends Notifier<ReportFormState> {
     state = state.copyWith(status: ReportStatus.locating, errorMessage: null);
 
     try {
-      // Check / request permission.
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -178,9 +205,9 @@ class ReportNotifier extends Notifier<ReportFormState> {
       );
 
       state = state.copyWith(
-        lat:    position.latitude,
-        lng:    position.longitude,
-        status: ReportStatus.idle,
+        lat:          position.latitude,
+        lng:          position.longitude,
+        status:       ReportStatus.idle,
         errorMessage: null,
       );
     } on Exception catch (e) {
@@ -193,13 +220,23 @@ class ReportNotifier extends Notifier<ReportFormState> {
 
   // ── Submission ─────────────────────────────────────────────────────────────
 
-  /// Upload image (if any), write the post to Firestore, and trigger the
-  /// Worker classification in the background.
+  /// Connectivity check → compress + upload image → write post to Firestore.
   ///
-  /// On success, [state.submittedPostId] is populated and the UI navigates
-  /// to IssueDetailPage by watching [state.isSuccess].
+  /// The [_idempotencyKey] is stored as `idempotencyKey` in the Firestore doc
+  /// so the server can detect and ignore duplicate submissions.
   Future<void> submit() async {
     if (!state.canSubmit) return;
+
+    // ── Connectivity check ────────────────────────────────────────────────
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none) ||
+        connectivity.isEmpty) {
+      state = state.copyWith(
+        errorMessage: 'No internet connection. '
+                      'Please check your network and try again.',
+      );
+      return;
+    }
 
     state = state.copyWith(status: ReportStatus.submitting, errorMessage: null);
 
@@ -207,23 +244,23 @@ class ReportNotifier extends Notifier<ReportFormState> {
       final repo    = ref.read(postRepositoryProvider);
       final geohash = GeoHash.encode(state.lat!, state.lng!);
 
-      // Upload image if provided (non-blocking failure — post still saves).
+      // Compress + upload image (non-blocking failure — post still saves).
       final List<String> mediaUrls = [];
       if (state.imageFile != null) {
         final url = await repo.uploadImage(state.imageFile!);
         if (url != null) mediaUrls.add(url);
       }
 
-      // Write post directly — no AI classification.
       final postId = await repo.createPost(
-        title:       state.title.trim(),
-        description: state.description.trim(),
-        category:    state.category!,
-        lat:         state.lat!,
-        lng:         state.lng!,
-        geohash:     geohash,
-        city:        state.city!,
-        mediaUrls:   mediaUrls,
+        title:          state.title.trim(),
+        description:    state.description.trim(),
+        category:       state.category!,
+        lat:            state.lat!,
+        lng:            state.lng!,
+        geohash:        geohash,
+        city:           state.city!,
+        mediaUrls:      mediaUrls,
+        idempotencyKey: _idempotencyKey,
       );
 
       state = state.copyWith(

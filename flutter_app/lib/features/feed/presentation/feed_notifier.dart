@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -39,28 +40,33 @@ Future<void> _writeCache(String city, List<PostModel> posts) async {
 
 class FeedState {
   const FeedState({
-    this.posts        = const [],
-    this.isLoading    = false,
-    this.isRefreshing = false,
+    this.posts           = const [],
+    this.isLoading       = false,
+    this.isRefreshing    = false,
+    this.isOfflineCached = false,
     this.errorMessage,
   });
 
   final List<PostModel> posts;
   final bool    isLoading;
   final bool    isRefreshing;
+  /// True when data comes from local Hive cache because device is offline.
+  final bool    isOfflineCached;
   final String? errorMessage;
 
   FeedState copyWith({
     List<PostModel>? posts,
     bool? isLoading,
     bool? isRefreshing,
+    bool? isOfflineCached,
     Object? errorMessage = _sentinel,
   }) {
     return FeedState(
-      posts:        posts        ?? this.posts,
-      isLoading:    isLoading    ?? this.isLoading,
-      isRefreshing: isRefreshing ?? this.isRefreshing,
-      errorMessage: errorMessage == _sentinel
+      posts:           posts           ?? this.posts,
+      isLoading:       isLoading       ?? this.isLoading,
+      isRefreshing:    isRefreshing    ?? this.isRefreshing,
+      isOfflineCached: isOfflineCached ?? this.isOfflineCached,
+      errorMessage:    errorMessage    == _sentinel
           ? this.errorMessage
           : errorMessage as String?,
     );
@@ -74,16 +80,15 @@ const _sentinel = Object();
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Watches [selectedCityProvider] and automatically reloads the feed whenever
-/// the city changes.  Serves cached data immediately on first build.
+/// the city changes. Serves cached data immediately on first build.
 class FeedNotifier extends Notifier<FeedState> {
   @override
   FeedState build() {
-    // Re-run build() whenever the selected city changes, which resets state
-    // and triggers a fresh fetch for the new city.
-    final city = ref.watch(selectedCityProvider);
-
+    final city   = ref.watch(selectedCityProvider);
     final cached = _readCache(city);
+
     if (cached != null && cached.isNotEmpty) {
+      // Serve cache immediately, refresh in background.
       Future.microtask(() => _fetchFromFirestore(city, isRefresh: true));
       return FeedState(posts: cached);
     }
@@ -92,24 +97,48 @@ class FeedNotifier extends Notifier<FeedState> {
     return const FeedState(isLoading: true);
   }
 
-  // ── Public actions ─────────────────────────────────────────────────────────
+  // ── Public ─────────────────────────────────────────────────────────────────
 
-  Future<void> refresh() {
-    final city = ref.read(selectedCityProvider);
-    return _fetchFromFirestore(city, isRefresh: true);
-  }
+  Future<void> refresh() =>
+      _fetchFromFirestore(ref.read(selectedCityProvider), isRefresh: true);
 
   // ── Private ────────────────────────────────────────────────────────────────
 
   Future<void> _fetchFromFirestore(String city, {bool isRefresh = false}) async {
+    // Check connectivity first.
+    final connectivity = await Connectivity().checkConnectivity();
+    final isOnline = !connectivity.contains(ConnectivityResult.none) &&
+        connectivity.isNotEmpty;
+
+    if (!isOnline) {
+      final cached = _readCache(city);
+      if (cached != null && cached.isNotEmpty) {
+        state = state.copyWith(
+          posts:           cached,
+          isLoading:       false,
+          isRefreshing:    false,
+          isOfflineCached: true,
+          errorMessage:    null,
+        );
+      } else {
+        state = state.copyWith(
+          isLoading:       false,
+          isRefreshing:    false,
+          isOfflineCached: false,
+          errorMessage:    "You're offline and there's no cached data for $city.",
+        );
+      }
+      return;
+    }
+
     state = isRefresh
-        ? state.copyWith(isRefreshing: true,  errorMessage: null)
-        : state.copyWith(isLoading:    true,   errorMessage: null);
+        ? state.copyWith(isRefreshing: true, isOfflineCached: false, errorMessage: null)
+        : state.copyWith(isLoading:    true, isOfflineCached: false, errorMessage: null);
 
     try {
       final snap = await FirebaseFirestore.instance
           .collection('posts')
-          .where('city', isEqualTo: city)
+          .where('city',   isEqualTo: city)
           .where('status', isEqualTo: 'under_review')
           .orderBy('createdAt', descending: true)
           .limit(30)
@@ -119,17 +148,30 @@ class FeedNotifier extends Notifier<FeedState> {
       await _writeCache(city, posts);
 
       state = state.copyWith(
-        posts:        posts,
-        isLoading:    false,
-        isRefreshing: false,
-        errorMessage: null,
+        posts:           posts,
+        isLoading:       false,
+        isRefreshing:    false,
+        isOfflineCached: false,
+        errorMessage:    null,
       );
-    } on Exception catch (e) {
-      state = state.copyWith(
-        isLoading:    false,
-        isRefreshing: false,
-        errorMessage: 'Could not load feed: $e',
-      );
+    } on Exception {
+      // Network failure — fall back to stale cache rather than blank screen.
+      final cached = _readCache(city);
+      if (cached != null && cached.isNotEmpty) {
+        state = state.copyWith(
+          posts:           cached,
+          isLoading:       false,
+          isRefreshing:    false,
+          isOfflineCached: true,
+          errorMessage:    null,
+        );
+      } else {
+        state = state.copyWith(
+          isLoading:    false,
+          isRefreshing: false,
+          errorMessage: 'Could not load feed. Check your connection.',
+        );
+      }
     }
   }
 }

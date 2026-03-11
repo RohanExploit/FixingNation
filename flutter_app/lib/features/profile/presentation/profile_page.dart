@@ -195,14 +195,14 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final approved = posts.where((p) {
-      final mod = (p['moderation'] as Map?)?.cast<String, dynamic>();
-      return mod?['status'] == 'approved';
-    }).length;
-    final pending  = posts.where((p) => p['status'] == 'PENDING_MODERATION').length;
-    final upvotes  = posts.fold<int>(
-      0, (sum, p) => sum + ((p['upvotes'] as num?)?.toInt() ?? 0),
-    );
+    // Single O(n) pass instead of three separate where/fold calls.
+    int approved = 0, pending = 0, totalUpvotes = 0;
+    for (final p in posts) {
+      final st = p['status'] as String? ?? '';
+      if (st == 'resolved')     approved++;
+      if (st == 'under_review') pending++;
+      totalUpvotes += (p['upvotes'] as num?)?.toInt() ?? 0;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
@@ -210,9 +210,9 @@ class _StatsRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _StatTile(value: '${posts.length}', label: 'Total'),
-          _StatTile(value: '$approved', label: 'Approved'),
-          _StatTile(value: '$pending',  label: 'Pending'),
-          _StatTile(value: '$upvotes',  label: 'Upvotes'),
+          _StatTile(value: '$approved',        label: 'Approved'),
+          _StatTile(value: '$pending',         label: 'Pending'),
+          _StatTile(value: '$totalUpvotes',    label: 'Upvotes'),
         ],
       ),
     );
@@ -256,17 +256,19 @@ class _MyPostTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs     = Theme.of(context).colorScheme;
-    final status = post['status'] as String? ?? 'PENDING_MODERATION';
-    final mod    = (post['moderation'] as Map?)?.cast<String, dynamic>()['status'] as String?;
+    final status = post['status'] as String? ?? 'under_review';
 
     final Color statusColor;
     final String statusLabel;
-    if (status == 'PENDING_MODERATION' || mod == null || mod == 'pending') {
+    if (status == 'under_review') {
       statusColor = cs.secondaryContainer;
-      statusLabel = 'Pending';
-    } else if (status == 'REJECTED' || mod == 'rejected') {
+      statusLabel = 'Under Review';
+    } else if (status == 'rejected') {
       statusColor = cs.errorContainer;
       statusLabel = 'Rejected';
+    } else if (status == 'resolved') {
+      statusColor = cs.primaryContainer;
+      statusLabel = 'Resolved';
     } else {
       statusColor = cs.primaryContainer;
       statusLabel = 'Live';
@@ -281,7 +283,7 @@ class _MyPostTile extends StatelessWidget {
         ),
         child: Text(
           statusLabel,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         ),
       ),
       title: Text(

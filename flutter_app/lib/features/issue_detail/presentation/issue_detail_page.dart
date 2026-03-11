@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Provider
@@ -105,7 +106,19 @@ class _UpvoteButton extends StatefulWidget {
 }
 
 class _UpvoteButtonState extends State<_UpvoteButton> {
+  static const _kBox = 'upvoted_posts';
+
   bool _voted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Restore voted state from Hive — persists across app restarts.
+    if (Hive.isBoxOpen(_kBox)) {
+      final box = Hive.box<bool>(_kBox);
+      _voted = box.get(widget.postId, defaultValue: false)!;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +140,13 @@ class _UpvoteButtonState extends State<_UpvoteButton> {
   Future<void> _upvote() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+
+    // Optimistic update + persist immediately.
     setState(() => _voted = true);
+    if (Hive.isBoxOpen(_kBox)) {
+      await Hive.box<bool>(_kBox).put(widget.postId, true);
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('posts')
@@ -137,7 +156,11 @@ class _UpvoteButtonState extends State<_UpvoteButton> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (_) {
+      // Revert both UI and Hive on failure.
       if (mounted) setState(() => _voted = false);
+      if (Hive.isBoxOpen(_kBox)) {
+        await Hive.box<bool>(_kBox).delete(widget.postId);
+      }
     }
   }
 }
@@ -159,8 +182,7 @@ class _PostBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status     = post['status']      as String? ?? 'PENDING_MODERATION';
-    final modStatus  = (post['moderation'] as Map?)?.cast<String, dynamic>()['status'] as String?;
+    final status     = post['status']      as String? ?? 'under_review';
     final title      = post['title']       as String? ?? '—';
     final description= post['description'] as String? ?? '—';
     final category   = post['category']    as String?;
@@ -173,7 +195,7 @@ class _PostBody extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         // ── Status banner ────────────────────────────────────────────────
-        _StatusBanner(postStatus: status, modStatus: modStatus),
+        _StatusBanner(postStatus: status),
         const SizedBox(height: 20),
 
         // ── Photo ────────────────────────────────────────────────────────
@@ -395,9 +417,22 @@ class _CommentsSectionState extends State<_CommentsSection> {
       });
 
       await batch.commit();
-      _ctrl.clear();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to post comment. Check your connection and try again.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      _ctrl.clear();
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+        setState(() => _submitting = false);
+      }
     }
   }
 }
@@ -476,17 +511,17 @@ class _CommentTile extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.postStatus, required this.modStatus});
+  const _StatusBanner({required this.postStatus});
 
   final String  postStatus;
-  final String? modStatus;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    final isPending  = postStatus == 'PENDING_MODERATION' || modStatus == null || modStatus == 'pending';
-    final isRejected = postStatus == 'REJECTED' || modStatus == 'rejected';
+    final isPending  = postStatus == 'under_review';
+    final isRejected = postStatus == 'rejected';
+    final isResolved = postStatus == 'resolved';
 
     final Color bg;
     final Color fg;
@@ -499,8 +534,7 @@ class _StatusBanner extends StatelessWidget {
       fg       = cs.onSecondaryContainer;
       icon     = Icons.hourglass_top;
       title    = 'Under Review';
-      subtitle = 'Your report is being processed by our AI system. '
-                 'It will appear publicly once approved.';
+      subtitle = 'Your report is live in the community feed and is under review by the team.';
     } else if (isRejected) {
       bg       = cs.errorContainer;
       fg       = cs.onErrorContainer;
@@ -508,6 +542,12 @@ class _StatusBanner extends StatelessWidget {
       title    = 'Not Approved';
       subtitle = 'This report did not pass moderation. '
                  'Please ensure the content describes a genuine civic issue.';
+    } else if (isResolved) {
+      bg       = cs.primaryContainer;
+      fg       = cs.onPrimaryContainer;
+      icon     = Icons.check_circle;
+      title    = 'Resolved';
+      subtitle = 'This issue has been resolved. Thank you for reporting!';
     } else {
       bg       = cs.primaryContainer;
       fg       = cs.onPrimaryContainer;

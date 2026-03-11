@@ -25,6 +25,7 @@ Future<void> main() async {
   // Hive offline cache
   await Hive.initFlutter();
   await Hive.openBox<String>('feed_cache');
+  await Hive.openBox<bool>('upvoted_posts'); // upvote dedup across sessions
 
   runApp(const ProviderScope(child: CivicPulseApp()));
 }

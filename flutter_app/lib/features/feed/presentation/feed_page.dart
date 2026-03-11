@@ -74,7 +74,7 @@ class _FeedBody extends StatelessWidget {
 
     if (state.posts.isEmpty) {
       return _EmptyView(
-        message: state.errorMessage ?? 'No approved issues yet in this city.',
+        message: state.errorMessage ?? 'No issues reported yet in this city.',
         onRetry: onRefresh,
       );
     }
@@ -85,9 +85,30 @@ class _FeedBody extends StatelessWidget {
         children: [
           ListView.separated(
             padding:           const EdgeInsets.symmetric(vertical: 8),
-            itemCount:         state.posts.length,
+            itemCount:         state.posts.length + (state.isOfflineCached ? 1 : 0),
             separatorBuilder:  (_, __) => const SizedBox(height: 0),
-            itemBuilder:       (ctx, i) => _IssueCard(post: state.posts[i]),
+            itemBuilder: (ctx, i) {
+              if (state.isOfflineCached && i == 0) {
+                return Container(
+                  color: Colors.amber.shade900.withValues(alpha: 0.25),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.wifi_off, size: 14),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Showing cached data — pull to refresh when online.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              final idx = state.isOfflineCached ? i - 1 : i;
+              return _IssueCard(post: state.posts[idx]);
+            },
           ),
           if (state.isRefreshing)
             const Positioned(
@@ -210,6 +231,7 @@ class _IssueCard extends StatelessWidget {
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60)  return 'just now';
     if (diff.inMinutes < 60)  return '${diff.inMinutes}m ago';
     if (diff.inHours   < 24)  return '${diff.inHours}h ago';
     if (diff.inDays    < 30)  return '${diff.inDays}d ago';
@@ -254,9 +276,13 @@ class _SeverityDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final Color color;
-    if (severity >= 0.7)      color = cs.error;
-    else if (severity >= 0.4) color = Colors.orange;
-    else                      color = Colors.green;
+    if (severity >= 0.7) {
+      color = cs.error;
+    } else if (severity >= 0.4) {
+      color = Colors.orange;
+    } else {
+      color = Colors.green;
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,

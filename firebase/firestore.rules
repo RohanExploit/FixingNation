@@ -16,91 +16,73 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // ── Field-shape helpers ─────────────────────────────────────────────────
-
-    // Reject any post creation that includes server-computed fields.
+    // ── Post creation validator ──────────────────────────────────────────────
     //
-    // severity, rankingScore, authorityId, and moderation are written
-    // exclusively by the Cloudflare Worker (via the Firebase Admin REST API,
-    // which bypasses these rules).  A client that attempts to set these fields
-    // on create is either buggy or acting maliciously — deny the write.
-    function hasNoComputedFields() {
-      let d = request.resource.data;
-      return !('severity'     in d)
-          && !('rankingScore' in d)
-          && !('authorityId'  in d)
-          && !('moderation'   in d);
-    }
+    // Validates the raw fields that Flutter supplies on post creation.
+    // Status must be 'under_review' — the app no longer uses PENDING_MODERATION.
+    // The Cloudflare Worker (AI) path is disabled; all posts go directly to
+    // under_review and are immediately visible in the city feed.
 
-    // Validate the raw fields that Flutter supplies on post creation.
     function validPostCreate() {
       let d = request.resource.data;
-      return d.authorId    == request.auth.uid
-          && d.title       is string
-          && d.title.size() > 0
-          && d.title.size() <= 200
-          && d.description is string
+      return d.authorId        == request.auth.uid
+          && d.title           is string
+          && d.title.size()    >  0
+          && d.title.size()    <= 200
+          && d.description     is string
           && d.description.size() > 0
           && d.description.size() <= 1000
-          && d.status      == 'PENDING_MODERATION'
-          && d.upvotes     == 0
-          && d.commentsCount == 0;
+          && d.status          == 'under_review'
+          && d.upvotes         == 0
+          && d.commentsCount   == 0;
     }
 
     // ── Collections ─────────────────────────────────────────────────────────
 
     match /users/{uid} {
-      allow read:   if true;
+      // Auth-gated: only signed-in users read profiles (H-6 fix)
+      allow read:   if isSignedIn();
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /posts/{postId} {
-      // Anyone can read approved posts.
-      // Admins can read everything.
-      // Authors can read their own posts even while pending.
-      allow read: if resource.data.moderation.status == 'approved'
-                  || isAdmin()
-                  || (isSignedIn() && resource.data.authorId == request.auth.uid);
+      // Anyone signed-in can read posts.
+      // Unauthenticated users cannot scrape the feed.
+      allow read: if isSignedIn();
 
-      // Flutter may only create posts with raw fields — no computed fields.
-      allow create: if isSignedIn()
-                    && validPostCreate()
-                    && hasNoComputedFields();
+      // Signed-in users may create posts with validated raw fields only.
+      allow create: if isSignedIn() && validPostCreate();
 
-      // Only admins may update posts (status changes, moderation overrides).
-      // The Worker writes via the Admin REST API which bypasses rules entirely.
-      allow update: if isAdmin();
+      // Users may increment upvotes on their own or others' posts.
+      // Only admins may change status / other fields.
+      allow update: if isAdmin()
+                    || (isSignedIn()
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['upvotes', 'updatedAt']));
 
       allow delete: if isAdmin();
 
       match /comments/{commentId} {
-        allow read:          if true;
-        allow create:        if isSignedIn()
-                             && request.resource.data.authorId == request.auth.uid
-                             && request.resource.data.text is string
-                             && request.resource.data.text.size() > 0
-                             && request.resource.data.text.size() <= 500;
+        allow read:   if isSignedIn();
+        allow create: if isSignedIn()
+                      && request.resource.data.authorId == request.auth.uid
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 500;
         allow update, delete: if isAdmin();
       }
     }
 
     match /reports/{reportId} {
-      allow create:           if isSignedIn();
+      allow create:               if isSignedIn();
       allow read, update, delete: if isAdmin();
     }
 
     match /authorities/{authorityId} {
       allow read:  if true;
       allow write: if isAdmin();
-    }
-
-    // Posts that could not be classified after all Worker retries.
-    // Written by the Flutter client (best-effort); read and managed by admins.
-    match /failed_classifications/{postId} {
-      allow create, update: if isSignedIn();
-      allow read, delete:   if isAdmin();
     }
 
     // Deny all unmapped paths.

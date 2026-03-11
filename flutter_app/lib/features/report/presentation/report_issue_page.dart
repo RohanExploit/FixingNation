@@ -81,7 +81,7 @@ class _ReportIssuePageState extends ConsumerState<ReportIssuePage> {
               ],
 
               // ── Section: Details ─────────────────────────────────────────
-              _SectionHeader(label: 'Issue Details'),
+              const _SectionHeader(label: 'Issue Details'),
               const SizedBox(height: 8),
 
               TextFormField(
@@ -119,7 +119,7 @@ class _ReportIssuePageState extends ConsumerState<ReportIssuePage> {
               const SizedBox(height: 24),
 
               // ── Section: Classification ───────────────────────────────────
-              _SectionHeader(label: 'Classification'),
+              const _SectionHeader(label: 'Classification'),
               const SizedBox(height: 8),
 
               // Category dropdown
@@ -158,13 +158,13 @@ class _ReportIssuePageState extends ConsumerState<ReportIssuePage> {
               const SizedBox(height: 24),
 
               // ── Section: Location ─────────────────────────────────────────
-              _SectionHeader(label: 'Location'),
+              const _SectionHeader(label: 'Location'),
               const SizedBox(height: 8),
               _LocationTile(state: state, notifier: notifier),
               const SizedBox(height: 24),
 
               // ── Section: Photo ────────────────────────────────────────────
-              _SectionHeader(label: 'Photo (optional)'),
+              const _SectionHeader(label: 'Photo (optional)'),
               const SizedBox(height: 8),
               _ImagePicker(state: state, notifier: notifier),
               const SizedBox(height: 32),

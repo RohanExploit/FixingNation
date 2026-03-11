@@ -1,15 +1,25 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    match /posts/{uid}/{allPaths=**} {
+    // Only allow signed-in users to upload images to their own folder.
+    // Content-type restricted to JPEG/PNG/WebP — no executable uploads.
+    // Size capped at 5 MB (post_repository compresses to ~200 KB before upload,
+    // but 5 MB gives headroom for iOS HEIC originals).
+    // Max 5 MB per upload — well within Flutter's compressed ~200 KB output.
+    match /posts/{uid}/{fileName} {
       allow read: if true;
-      allow write: if isSignedIn() && request.auth.uid == uid && request.resource.size < 2 * 1024 * 1024;
+      allow write: if isSignedIn()
+          && request.auth.uid == uid
+          && request.resource.size < 5 * 1024 * 1024
+          && request.resource.contentType.matches('image/(jpeg|png|webp)');
     }
 
+    // Deny everything else.
     match /{allPaths=**} {
       allow read, write: if false;
     }
