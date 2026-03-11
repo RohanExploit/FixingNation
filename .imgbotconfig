@@ -1,0 +1,14 @@
+{
+  "schedule": "daily",
+  "ignoredFiles": [
+    "flutter_app/build/**",
+    "flutter_app/.dart_tool/**",
+    "flutter_app/windows/**",
+    "flutter_app/macos/**",
+    "flutter_app/ios/**",
+    "flutter_app/linux/**",
+    "flutter_app/web/**",
+    "firebase/**"
+  ],
+  "aggressiveCompression": true
+}
