@@ -20,7 +20,19 @@ flutter build appbundle --release
 - The App Bundle (AAB) will be saved at: `build/app/outputs/bundle/release/app-release.aab`
 
 ### Option B: Cloud Build (Recommended for low-spec PCs)
-You can use **GitHub Actions** to automatically build your APK and AAB without using your computer's RAM or disk space. I can set this up for you in the next step by generating an `android_release.yml` workflow file!
+A **GitHub Actions workflow** has been set up to automatically build the release APK and AAB in the cloud, requiring zero local resources.
+
+**How to download your built APK:**
+1. Go to your repository on GitHub.
+2. Click on the **Actions** tab at the top.
+3. Click on the most recent workflow run under **"Build Android Release"**.
+4. Scroll down to the **Artifacts** section at the bottom of the summary page.
+5. Click on **app-release.apk** to download the zipped APK to your computer.
+6. Extract the zip file, and transfer the `app-release.apk` to your Android device to install.
+
+*(The `app-release.aab` artifact is also available there, which is what you will eventually upload to the Google Play Store).*
+
+You can trigger a new build manually at any time by going to **Actions** -> **Build Android Release** -> **Run workflow**.
 
 ## 3. What Happens After the APK
 Next testing stage should be:
