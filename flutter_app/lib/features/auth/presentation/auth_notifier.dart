@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/firebase_guard.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth state stream (read-only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,9 +51,14 @@ class AuthNotifier extends Notifier<AuthFormState> {
   Future<void> signIn(String email, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email:    email.trim(),
-        password: password,
+      // firebaseGuardRethrow reports the error to Sentry, then rethrows so
+      // we can map FirebaseAuthException codes to user-friendly messages.
+      await firebaseGuardRethrow(
+        () => FirebaseAuth.instance.signInWithEmailAndPassword(
+          email:    email.trim(),
+          password: password,
+        ),
+        tags: {'operation': 'auth_sign_in', 'screen': 'LoginPage'},
       );
       state = state.copyWith(isLoading: false);
     } on FirebaseAuthException catch (e) {
@@ -70,11 +77,17 @@ class AuthNotifier extends Notifier<AuthFormState> {
   Future<void> register(String name, String email, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email:    email.trim(),
-        password: password,
+      final cred = await firebaseGuardRethrow(
+        () => FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email:    email.trim(),
+          password: password,
+        ),
+        tags: {'operation': 'auth_register', 'screen': 'LoginPage'},
       );
-      await cred.user?.updateDisplayName(name.trim());
+      await firebaseGuard(
+        () async => cred.user?.updateDisplayName(name.trim()),
+        tags: {'operation': 'auth_update_display_name'},
+      );
       state = state.copyWith(isLoading: false);
     } on FirebaseAuthException catch (e) {
       state = state.copyWith(
@@ -90,14 +103,20 @@ class AuthNotifier extends Notifier<AuthFormState> {
   }
 
   Future<void> signOut() async {
-    await FirebaseAuth.instance.signOut();
+    await firebaseGuard(
+      () => FirebaseAuth.instance.signOut(),
+      tags: {'operation': 'auth_sign_out'},
+    );
     state = const AuthFormState();
   }
 
   Future<void> sendPasswordReset(String email) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
+      await firebaseGuardRethrow(
+        () => FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim()),
+        tags: {'operation': 'auth_password_reset', 'screen': 'LoginPage'},
+      );
       state = state.copyWith(isLoading: false);
     } on FirebaseAuthException catch (e) {
       state = state.copyWith(
