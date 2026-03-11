@@ -23,3 +23,9 @@
 
 # Image compress
 -keep class com.sython.flutter_image_compress.** { *; }
+
+# Flutter deferred components / Play Store split (not used in this project)
+# Suppress missing-class warnings for Play Core classes referenced by Flutter internals
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
