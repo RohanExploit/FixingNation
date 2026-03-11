@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'features/auth/presentation/auth_notifier.dart';
 import 'features/auth/presentation/login_page.dart';
@@ -19,7 +20,6 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase — google-services.json / GoogleService-Info.plist must be present.
-  // Run `flutterfire configure` to regenerate firebase_options.dart if needed.
   await Firebase.initializeApp();
 
   // Hive offline cache
@@ -27,7 +27,21 @@ Future<void> main() async {
   await Hive.openBox<String>('feed_cache');
   await Hive.openBox<bool>('upvoted_posts'); // upvote dedup across sessions
 
-  runApp(const ProviderScope(child: CivicPulseApp()));
+  // ── Sentry crash reporting ─────────────────────────────────────────────────
+  // DSN is intentionally public-facing (client-only — write-only key).
+  // tracesSampleRate = 0.2 in production to reduce quota usage.
+  await SentryFlutter.init(
+    (options) {
+      options.dsn =
+          'https://216029294ed861b0b08759580052ff77@o4510778100350976.ingest.us.sentry.io/4511026016288768';
+      options.tracesSampleRate    = 1.0; // 100% in debug; lower in prod release
+      options.attachScreenshot    = true; // screenshot on crash
+      options.enableAutoSessionTracking = true;
+    },
+    appRunner: () => runApp(
+      const ProviderScope(child: CivicPulseApp()),
+    ),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,8 +54,10 @@ class CivicPulseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title:                    'CivicPulse',
+      title:                      'CivicPulse',
       debugShowCheckedModeBanner: false,
+      // Sentry navigator observer captures navigation breadcrumbs
+      navigatorObservers: [SentryNavigatorObserver()],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor:  const Color(0xFF6C3BFF),
@@ -66,13 +82,20 @@ class _AuthGate extends ConsumerWidget {
     final authAsync = ref.watch(authStateProvider);
 
     return authAsync.when(
-      // While resolving, show a neutral splash
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (_, __) => const LoginPage(),
       data: (User? user) {
         if (user == null) return const LoginPage();
+
+        // Set Sentry user context so crashes are tied to the account.
+        Sentry.configureScope(
+          (scope) => scope.setUser(
+            SentryUser(id: user.uid, email: user.email),
+          ),
+        );
+
         return const _MainShell();
       },
     );
@@ -104,7 +127,6 @@ class _MainShell extends ConsumerWidget {
     final currentTab = ref.watch(_tabProvider);
 
     return Scaffold(
-      // IndexedStack keeps all page states alive across tab switches.
       body: IndexedStack(
         index:    currentTab,
         children: _pages,
@@ -115,24 +137,24 @@ class _MainShell extends ConsumerWidget {
             ref.read(_tabProvider.notifier).state = i,
         destinations: const [
           NavigationDestination(
-            icon:          Icon(Icons.home_outlined),
-            selectedIcon:  Icon(Icons.home),
-            label:         'Feed',
+            icon:         Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label:        'Feed',
           ),
           NavigationDestination(
-            icon:          Icon(Icons.map_outlined),
-            selectedIcon:  Icon(Icons.map),
-            label:         'Map',
+            icon:         Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label:        'Map',
           ),
           NavigationDestination(
-            icon:          Icon(Icons.add_circle_outline),
-            selectedIcon:  Icon(Icons.add_circle),
-            label:         'Report',
+            icon:         Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle),
+            label:        'Report',
           ),
           NavigationDestination(
-            icon:          Icon(Icons.person_outline),
-            selectedIcon:  Icon(Icons.person),
-            label:         'Profile',
+            icon:         Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label:        'Profile',
           ),
         ],
       ),
