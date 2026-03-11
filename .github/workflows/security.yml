@@ -1,67 +1,62 @@
 name: Security Scan
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 # Cancel redundant runs on the same branch.
 concurrency:
-    group: security-${{ github.ref }}
-    cancel-in-progress: true
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    # ── 1. Dart dependency audit ────────────────────────────────────────────────
-    dart-audit:
-        name: Dart pub audit
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
+  # ── 1. Dart dependency audit ────────────────────────────────────────────────
+  dart-audit:
+    name: Dart pub audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Set up Flutter
-              uses: subosito/flutter-action@v2
-              with:
-                  channel: stable
-                  cache: true
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-            - name: Get dependencies
-              working-directory: flutter_app
-              run: flutter pub get
+      - name: Get dependencies
+        working-directory: flutter_app
+        run: flutter pub get
 
-            - name: Audit dependencies for CVEs
-              working-directory: flutter_app
-              run: dart pub audit
-              # Exits non-zero if any high-severity vulnerability is found.
+      - name: Flutter analyze
+        working-directory: flutter_app
+        run: flutter analyze
 
-            - name: Flutter analyze
-              working-directory: flutter_app
-              run: flutter analyze
+  # ── 2. Secret & vulnerability scan (Trivy) ─────────────────────────────────
+  trivy:
+    name: Trivy secret + vuln scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # needed to upload SARIF to Security tab
+    steps:
+      - uses: actions/checkout@v4
 
-    # ── 2. Secret & vulnerability scan (Trivy) ─────────────────────────────────
-    trivy:
-        name: Trivy secret + vuln scan
-        runs-on: ubuntu-latest
-        permissions:
-            security-events: write # needed to upload SARIF to Security tab
-        steps:
-            - uses: actions/checkout@v4
+      - name: Run Trivy (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          # Scan for leaked secrets AND vulnerable packages (npm in worker/).
+          scanners: secret,vuln
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "0" # Don't fail the build; upload results to Security tab.
 
-            - name: Run Trivy (filesystem)
-              uses: aquasecurity/trivy-action@master
-              with:
-                  scan-type: fs
-                  scan-ref: .
-                  # Scan for leaked secrets AND vulnerable packages (npm in worker/).
-                  scanners: secret,vuln
-                  format: sarif
-                  output: trivy-results.sarif
-                  severity: HIGH,CRITICAL
-                  exit-code: "0" # Don't fail the build; upload results to Security tab.
-
-            - name: Upload SARIF to GitHub Security
-              uses: github/codeql-action/upload-sarif@v3
-              if: always()
-              with:
-                  sarif_file: trivy-results.sarif
-                  category: trivy
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
